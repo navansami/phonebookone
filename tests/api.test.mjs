@@ -1,13 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import path from 'node:path';
-import { mkdir } from 'node:fs/promises';
 import { GET, POST, PUT, PATCH, DELETE } from '../app/api/[...path]/route.js';
+import { setTestStore } from '../lib/store.js';
+import { setTestImages } from '../lib/images.js';
 
-const dataDir = path.join(process.cwd(), '.tmp', `api-test-${process.pid}`);
-await mkdir(dataDir, { recursive: true });
-process.env.DATA_DIR = dataDir;
+setTestStore({ contacts: [], taxonomies: {}, suggestions: [], nextId: 1 });
+setTestImages(new Map());
 process.env.ADMIN_USERNAME = 'admin';
 process.env.ADMIN_PASSWORD = 'correct test password';
 process.env.HOTEL_ACCESS_CODE = 'H-A5F1';
@@ -57,7 +56,7 @@ test('admin auth and hotel access gate', async () => {
   assert.equal((await call('GET', `/api/contacts/${id}`, undefined, publicHeaders)).status, 404);
 });
 
-test('CSV preview/import, image upload, and suggestions work locally', async () => {
+test('CSV preview/import, image upload, and suggestions retain their API contract', async () => {
   const login = await call('POST', '/api/auth/login', { username: 'admin', password: 'correct test password' });
   const token = (await login.json()).access_token;
   const adminHeaders = { Authorization: `Bearer ${token}` };
@@ -84,4 +83,21 @@ test('CSV preview/import, image upload, and suggestions work locally', async () 
   const imageUrl = (await imageResponse.json()).url;
   assert.equal((await call('GET', imageUrl, undefined, { Cookie: cookie })).status, 200);
   assert.equal((await call('POST', '/api/suggestions', { type: 'edit', name: 'Test, CSV' }, { Cookie: cookie })).status, 201);
+});
+
+test('missing Atlas URI returns a configuration error', async () => {
+  setTestStore(null);
+  const previous = process.env.MONGODB_URI;
+  delete process.env.MONGODB_URI;
+  try {
+    const verified = await call('POST', '/api/access/verify', { code: 'HA5F1' });
+    const cookie = verified.headers.get('set-cookie').split(';')[0];
+    const response = await call('GET', '/api/contacts', undefined, { Cookie: cookie });
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).detail, /MONGODB_URI/);
+  } finally {
+    if (previous === undefined) delete process.env.MONGODB_URI;
+    else process.env.MONGODB_URI = previous;
+    setTestStore({ contacts: [], taxonomies: {}, suggestions: [], nextId: 1 });
+  }
 });

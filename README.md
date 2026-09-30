@@ -1,33 +1,39 @@
 # PhonebookOne
 
-One Next.js codebase for the FTP Telephone Book. The public directory, hotel-code screen, dark/light themes, favorites, search and filters, contact cards and modals, emergency/IFA views, offline banner, PWA shell and admin dashboard use the original React components and Tailwind styles. Next.js serves their API from the same process. No Python, MongoDB or Cloudinary process is needed for local use.
+One Next.js codebase for the FTP Telephone Book. The existing public directory, hotel-code screen, themes, favorites, search and filters, contact views, PWA shell and admin dashboard retain their original React components and styles. Next.js serves the API; MongoDB Atlas stores contacts, taxonomy values, suggestions and profile pictures.
 
-## Run locally
+## Set up
 
-Use Node.js 20 or newer. In this folder:
+Use Node.js 20.19 or newer. In this folder:
 
 ```powershell
 npm.cmd install
 npm.cmd run setup
+```
+
+Open `.env.local` and set `MONGODB_URI` to your Atlas connection string. Keep this file private. `MONGODB_DATABASE` defaults to `phonebookone`. The generated admin password and hotel access code are also in `.env.local`; setup preserves existing values. Configure the Atlas database user and network access for the machine or host running Next.js.
+
+Then import the existing local phonebook snapshot into an **empty** Atlas database:
+
+```powershell
+npm.cmd run migrate:local
 npm.cmd run dev
 ```
 
-Open http://127.0.0.1:3000. `setup` creates `.env.local` with a generated admin password and hotel access code, then seeds the local store once. To see the credentials, open `.env.local` locally. The file is ignored by Git. This workspace already has a generated admin password; its hotel code is the original `H-A5F1`.
+Open http://127.0.0.1:3000. `migrate:local` copies `data/phonebook.json` and any referenced `data/uploads/` images, including contact IDs, taxonomy values, suggestions and the next ID. It refuses to replace a populated Atlas database. The local backup stays untouched. If the local snapshot is absent, `npm.cmd run seed` loads the bundled `seed/Telephonebook.json` into an empty database instead. That snapshot has 204 rows; six have blank names and are skipped, leaving 198 contacts. These are saved snapshots, not a live export from the old backend. Current live data can be imported through the admin CSV workflow.
 
-The seed snapshot at `seed/Telephonebook.json` has 204 rows. Six have blank names and fail the original server's required-name rule, so the local store contains the other **198 contacts**. The source snapshot is preserved for review. This is a file snapshot, not an export from a live MongoDB database. To migrate current live data, export it from the old server and use the admin CSV preview/import workflow. No live database credentials were available in these folders.
+An unset `MONGODB_URI` produces a clear API configuration error. Setup does not seed automatically. The app does not write contact data or images to its local filesystem during normal use.
 
-## One-process architecture
+## Code layout
 
-- `ui/`: copied client components, contexts, pages, CSS and services. Moving this directory under `ui/` avoids Next.js treating its `pages/` subfolder as a second router. The existing JSX layout and Tailwind design classes are unchanged.
-- `app/[[...slug]]/`: Next.js entry for the existing client-side routes `/`, `/login` and `/admin`. BrowserRouter runs in the browser as before.
-- `app/api/[...path]/`: matching contact, auth, taxonomy, CSV, image and suggestion endpoints.
-- `lib/`: validation, filtering, file-backed persistence and signed admin/hotel sessions.
-- `data/`: writable local store and uploads. This directory is ignored by Git. Writes are serialized within one Node process and replaced atomically.
-- `public/sw.js`: offline caching of the app shell and successful directory reads.
+- `ui/`: the original React components, pages, contexts, CSS and services. The design classes are unchanged.
+- `app/[[...slug]]/`: Next.js entry for `/`, `/login` and `/admin`.
+- `app/api/[...path]/`: contact, auth, taxonomy, CSV, image and suggestion endpoints.
+- `lib/store.js`: MongoDB Atlas collections and transactional updates.
+- `lib/images.js`: GridFS profile picture storage.
+- `data/`: ignored local backup from the previous file-backed version; not used at runtime.
 
-Admin login issues a 24-hour signed token. The hotel code creates an eight-hour HTTP-only access cookie. The React login and hotel-code screens retain their original appearance. The admin credential and signing secret remain server-only in `.env.local`.
-
-The app must run as **one persistent Node.js process with a writable `DATA_DIR`**. The JSON store is not suitable for multiple app instances or an ephemeral serverless filesystem; migrate `lib/store.js` to a shared database before deploying that way. Back up `data/phonebook.json` and `data/uploads/` together. Protect the seed snapshot if the directory contains private staff information.
+Admin login issues a 24-hour signed token. The hotel code creates an eight-hour HTTP-only access cookie. The admin credential, database URI and signing secret remain server-only in `.env.local`. For deployment, set the same environment variables on the server and keep the old local backup until migration is verified.
 
 ## Verification
 
@@ -35,8 +41,8 @@ The app must run as **one persistent Node.js process with a writable `DATA_DIR`*
 npm.cmd run build
 npm.cmd run lint
 npm.cmd test
-# With `npm.cmd run start` running in another terminal:
+# With `npm.cmd run start` running and Atlas configured:
 node scripts/smoke.mjs http://127.0.0.1:3000
 ```
 
-The API tests cover access, admin authentication, CRUD, filtering, flags, taxonomy, bulk edits, CSV preview/import, image upload and suggestions without touching the seeded contacts. A connected browser was unavailable in this session, so visual parity and responsive interaction checks still need a browser review before replacing the existing app.
+The API tests exercise access, auth, CRUD, filtering, flags, taxonomy, bulk edits, CSV, image delivery and suggestions using an in-memory test adapter. A live Atlas connection is needed to verify migration and persistence end to end. A connected browser was unavailable in the initial conversion, so responsive visual parity still merits a browser review.

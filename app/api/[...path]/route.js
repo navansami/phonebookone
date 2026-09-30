@@ -1,6 +1,5 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import path from 'node:path';
 import { readStore, updateStore } from '../../../lib/store.js';
+import { saveImage, readImage } from '../../../lib/images.js';
 import { adminFromRequest, checkCredentials, checkHotelCode, createToken } from '../../../lib/auth.js';
 import { exportFields, taxonomyFields, validateContact, makeContact, filterContacts, taxonomyInventory, rewriteTaxonomy, parseCsv, csvCell } from '../../../lib/contacts.js';
 
@@ -188,10 +187,8 @@ async function handleUpload(request, url) {
   if (!file || typeof file.type !== 'string' || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return error('Invalid file type. Only PNG, JPEG or WebP images are allowed');
   if (file.size > 5 * 1024 * 1024) return error('File too large. Maximum size is 5MB');
   const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[file.type];
-  const directory = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'), 'uploads');
-  await mkdir(directory, { recursive: true });
-  const filename = `${id}-${Date.now()}.${extension}`;
-  await writeFile(path.join(directory, filename), Buffer.from(await file.arrayBuffer()), { mode: 0o600 });
+  const filename = `${id}-${crypto.randomUUID()}.${extension}`;
+  await saveImage(filename, Buffer.from(await file.arrayBuffer()), file.type);
   const imageUrl = `/api/images/${filename}`;
   await updateStore(store => { const contact = mutableContact(store, id); if (contact) { contact.profile_picture = imageUrl; contact.updated_at = new Date().toISOString(); } });
   return json({ url: imageUrl, message: 'Profile picture uploaded successfully' });
@@ -206,7 +203,7 @@ async function dispatch(request, params) {
       const origin = request.headers.get('origin');
       if (origin && origin !== url.origin) return error('Cross-origin requests are not allowed', 403);
     }
-    if (segments[0] === 'auth') return handleAuth(request, segments, method);
+    if (segments[0] === 'auth') return await handleAuth(request, segments, method);
     if (segments[0] === 'access' && segments[1] === 'me' && method === 'GET') return (await accessFromRequest(request)) ? json({ verified: true }) : error('Hotel access required', 401);
     if (segments[0] === 'access' && segments[1] === 'verify' && method === 'POST') {
       if (!checkHotelCode((await body(request)).code)) return error('Invalid hotel code', 401);
@@ -219,13 +216,10 @@ async function dispatch(request, params) {
       if (!(await accessFromRequest(request))) return error('Hotel access required', 401);
       const filename = segments[1];
       if (!/^[\w.-]+\.(png|jpg|webp)$/.test(filename)) return error('Not found', 404);
-      try {
-        const file = await readFile(path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'), 'uploads', filename));
-        const type = filename.endsWith('.png') ? 'image/png' : filename.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
-        return new Response(file, { headers: { 'Content-Type': type, 'Cache-Control': 'private, max-age=3600' } });
-      } catch { return error('Not found', 404); }
+      const file = await readImage(filename);
+      return file ? new Response(file.bytes, { headers: { 'Content-Type': file.type, 'Cache-Control': 'private, max-age=3600' } }) : error('Not found', 404);
     }
-    if (segments[0] === 'contacts') return handleContacts(request, segments, method, url);
+    if (segments[0] === 'contacts') return await handleContacts(request, segments, method, url);
     if (segments[0] === 'tags' && method === 'GET') {
       if (!(await accessFromRequest(request))) return error('Hotel access required', 401);
       return json({ tags: [...new Set((await readStore()).contacts.flatMap(contact => contact.tags || []))].sort() });
@@ -243,16 +237,21 @@ async function dispatch(request, params) {
     }
     if (segments[0] === 'admin') {
       if (!(await adminFromRequest(request))) return error('Could not validate credentials', 401);
-      if (segments[1] === 'contacts') return handleAdminContacts(request, segments, method, url);
-      if (segments[1] === 'taxonomy') return handleTaxonomy(request, segments[2], method);
+      if (segments[1] === 'contacts') return await handleAdminContacts(request, segments, method, url);
+      if (segments[1] === 'taxonomy') return await handleTaxonomy(request, segments[2], method);
     }
     if (segments[0] === 'upload' && segments[1] === 'profile-picture' && method === 'POST') {
       if (!(await adminFromRequest(request))) return error('Could not validate credentials', 401);
-      return handleUpload(request, url);
+      return await handleUpload(request, url);
     }
     return error('Not found', 404);
   } catch (exception) {
     if (exception.message === 'SESSION_SECRET must contain at least 32 characters') return error('Server authentication is not configured', 503);
+    if (exception.code === 'MONGODB_URI_MISSING') return error('MongoDB Atlas is not configured. Add MONGODB_URI to .env.local.', 503);
+    if (exception.name?.startsWith('Mongo') || exception.name === 'MongoError') {
+      console.error('Phonebook database request failed:', exception.name);
+      return error('MongoDB Atlas is unavailable', 503);
+    }
     if (exception instanceof SyntaxError || exception instanceof TypeError || exception.message?.includes('Invalid') || exception.message?.includes('required') || exception.message?.includes('too long') || exception.message?.includes('too large')) return error(exception.message);
     console.error('Phonebook API failed:', exception);
     return error('The request could not be completed', 500);
