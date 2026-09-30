@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import api from '../services/api';
 import {
   X,
   Search,
@@ -13,7 +15,6 @@ import {
   Hospital,
   Network,
 } from 'lucide-react';
-import { FMC_NETWORK_PROVIDERS } from '../data/fmcNetworkData';
 
 const PAGE_SIZE = 60;
 
@@ -49,6 +50,12 @@ const FmcNetworkModal = ({ isOpen, onClose }) => {
   const [selectedType, setSelectedType] = useState('');
   const [area, setArea] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const { data: providers = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ['fmc-network'],
+    queryFn: async () => (await api.get('/api/fmc-network')).data.providers,
+    enabled: isOpen,
+    staleTime: 30 * 60 * 1000,
+  });
 
   // Close on Escape + lock body scroll (same pattern as other modals)
   useEffect(() => {
@@ -80,28 +87,28 @@ const FmcNetworkModal = ({ isOpen, onClose }) => {
 
   const typeCounts = useMemo(() => {
     const counts = {};
-    FMC_NETWORK_PROVIDERS.forEach((provider) => {
+    providers.forEach((provider) => {
       counts[provider.type] = (counts[provider.type] || 0) + 1;
     });
     return counts;
-  }, []);
+  }, [providers]);
 
   const areaOptions = useMemo(() => {
     if (!emirate) return [];
     return [
       ...new Set(
-        FMC_NETWORK_PROVIDERS.filter((provider) => provider.emirate === emirate && provider.area).map(
+        providers.filter((provider) => provider.emirate === emirate && provider.area).map(
           (provider) => provider.area
         )
       ),
     ].sort((a, b) => a.localeCompare(b));
-  }, [emirate]);
+  }, [emirate, providers]);
 
   const filteredProviders = useMemo(() => {
     const rawQuery = query.trim().toLowerCase();
     const normalizedQuery = rawQuery.replace(/[^a-z0-9]/g, '');
 
-    return FMC_NETWORK_PROVIDERS.filter((provider) => {
+    return providers.filter((provider) => {
       if (emirate && provider.emirate !== emirate) return false;
       if (selectedType && provider.type !== selectedType) return false;
       if (area && provider.area !== area) return false;
@@ -118,7 +125,7 @@ const FmcNetworkModal = ({ isOpen, onClose }) => {
       const normalizedPhone = (provider.phone || '').replace(/[^0-9+]/g, '');
       return normalizedQuery.length >= 3 && normalizedPhone.includes(normalizedQuery);
     });
-  }, [query, emirate, selectedType, area]);
+  }, [providers, query, emirate, selectedType, area]);
 
   const visibleProviders = filteredProviders.slice(0, visibleCount);
   const hasActiveFilters = Boolean(query.trim() || emirate || selectedType || area);
@@ -263,7 +270,7 @@ const FmcNetworkModal = ({ isOpen, onClose }) => {
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-          <p className="mb-4 text-sm text-gray-600 dark:text-slate-300">
+          {!isLoading && !isError && <p className="mb-4 text-sm text-gray-600 dark:text-slate-300">
             Showing <span className="font-semibold text-gray-900 dark:text-white">{formatCount(visibleProviders.length)}</span> of{' '}
             <span className="font-semibold text-gray-900 dark:text-white">{formatCount(filteredProviders.length)}</span>{' '}
             providers
@@ -272,9 +279,16 @@ const FmcNetworkModal = ({ isOpen, onClose }) => {
                 Clear all filters
               </button>
             )}
-          </p>
+          </p>}
 
-          {filteredProviders.length === 0 ? (
+          {isLoading ? (
+            <p className="py-16 text-center text-sm text-gray-500 dark:text-slate-400">Loading FMC providers...</p>
+          ) : isError ? (
+            <div className="flex flex-col items-center py-16 text-center">
+              <p className="text-sm text-gray-600 dark:text-slate-300">The FMC network could not be loaded.</p>
+              <button onClick={() => refetch()} className="btn-primary mt-5 text-sm">Try Again</button>
+            </div>
+          ) : filteredProviders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="mb-3 rounded-full bg-gray-100 p-4 dark:bg-[#24303c]">
                 <Search className="h-6 w-6 text-gray-400" />

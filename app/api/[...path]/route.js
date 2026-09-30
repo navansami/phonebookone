@@ -1,5 +1,6 @@
 import { readStore, updateStore } from '../../../lib/store.js';
 import { saveImage, readImage } from '../../../lib/images.js';
+import { getFmcProviders } from '../../../lib/fmc-network.js';
 import { adminFromRequest, checkCredentials, checkHotelCode, createToken } from '../../../lib/auth.js';
 import { exportFields, taxonomyFields, validateContact, makeContact, filterContacts, taxonomyInventory, rewriteTaxonomy, parseCsv, csvCell } from '../../../lib/contacts.js';
 
@@ -220,6 +221,10 @@ async function dispatch(request, params) {
       return file ? new Response(file.bytes, { headers: { 'Content-Type': file.type, 'Cache-Control': 'private, max-age=3600' } }) : error('Not found', 404);
     }
     if (segments[0] === 'contacts') return await handleContacts(request, segments, method, url);
+    if (segments[0] === 'fmc-network' && segments.length === 1 && method === 'GET') {
+      if (!(await accessFromRequest(request))) return error('Hotel access required', 401);
+      return json({ providers: await getFmcProviders() });
+    }
     if (segments[0] === 'tags' && method === 'GET') {
       if (!(await accessFromRequest(request))) return error('Hotel access required', 401);
       return json({ tags: [...new Set((await readStore()).contacts.flatMap(contact => contact.tags || []))].sort() });

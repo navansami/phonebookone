@@ -4,9 +4,11 @@ import { randomBytes } from 'node:crypto';
 import { GET, POST, PUT, PATCH, DELETE } from '../app/api/[...path]/route.js';
 import { setTestStore } from '../lib/store.js';
 import { setTestImages } from '../lib/images.js';
+import { setTestFmcProviders } from '../lib/fmc-network.js';
 
 setTestStore({ contacts: [], taxonomies: {}, suggestions: [], nextId: 1 });
 setTestImages(new Map());
+setTestFmcProviders([{ id: 'fmc-0001', type: 'Clinic', emirate: 'DUBAI', name: 'Test Clinic', phone: '04-1234567' }]);
 process.env.ADMIN_USERNAME = 'admin';
 process.env.ADMIN_PASSWORD = 'correct test password';
 process.env.HOTEL_ACCESS_CODE = 'H-A5F1';
@@ -23,6 +25,7 @@ async function call(method, route, payload, headers = {}) {
 
 test('admin auth and hotel access gate', async () => {
   assert.equal((await call('GET', '/api/contacts')).status, 401);
+  assert.equal((await call('GET', '/api/fmc-network')).status, 401);
   assert.equal((await call('POST', '/api/auth/login', { username: 'admin', password: 'wrong' })).status, 401);
   const login = await call('POST', '/api/auth/login', { username: 'admin', password: 'correct test password' });
   assert.equal(login.status, 200);
@@ -34,6 +37,9 @@ test('admin auth and hotel access gate', async () => {
   const cookie = access.headers.get('set-cookie').split(';')[0];
   const publicHeaders = { Cookie: cookie };
   assert.equal((await call('GET', '/api/contacts', undefined, publicHeaders)).status, 200);
+  const fmc = await call('GET', '/api/fmc-network', undefined, publicHeaders);
+  assert.equal(fmc.status, 200);
+  assert.deepEqual((await fmc.json()).providers.map(provider => provider.name), ['Test Clinic']);
 
   const created = await call('POST', '/api/contacts', { name: 'Ada Test', department: 'Operations', tags: ['ERT'], languages: ['French'] }, publicHeaders);
   assert.equal(created.status, 201);
@@ -87,6 +93,7 @@ test('CSV preview/import, image upload, and suggestions retain their API contrac
 
 test('missing Atlas URI returns a configuration error', async () => {
   setTestStore(null);
+  setTestFmcProviders(null);
   const previous = process.env.MONGODB_URI;
   delete process.env.MONGODB_URI;
   try {
@@ -95,9 +102,11 @@ test('missing Atlas URI returns a configuration error', async () => {
     const response = await call('GET', '/api/contacts', undefined, { Cookie: cookie });
     assert.equal(response.status, 503);
     assert.match((await response.json()).detail, /MONGODB_URI/);
+    assert.equal((await call('GET', '/api/fmc-network', undefined, { Cookie: cookie })).status, 503);
   } finally {
     if (previous === undefined) delete process.env.MONGODB_URI;
     else process.env.MONGODB_URI = previous;
     setTestStore({ contacts: [], taxonomies: {}, suggestions: [], nextId: 1 });
+    setTestFmcProviders([]);
   }
 });

@@ -17,10 +17,13 @@ Then import the existing local phonebook snapshot into an **empty** Atlas databa
 
 ```powershell
 npm.cmd run migrate:local
+npm.cmd run seed:fmc
 npm.cmd run dev
 ```
 
 Open http://127.0.0.1:3000. `migrate:local` copies `data/phonebook.json` and any referenced `data/uploads/` images, including contact IDs, taxonomy values, suggestions and the next ID. It refuses to replace a populated Atlas database. The local backup stays untouched. If the local snapshot is absent, `npm.cmd run seed` loads the bundled `seed/Telephonebook.json` into an empty database instead. That snapshot has 204 rows; six have blank names and are skipped, leaving 198 contacts. These are saved snapshots, not a live export from the old backend. Current live data can be imported through the admin CSV workflow.
+
+`npm.cmd run seed:fmc` imports the 3,539 providers in `seed/fmcNetworkData.js` into a separate `fmc_network_providers` collection. It can be rerun safely: existing provider records are preserved and only missing IDs are added. The FMC modal requests providers from `/api/fmc-network` after hotel-code access, so the provider list is no longer part of the browser bundle. Set the same Atlas URI locally as the deployed app before running the import; the Vercel environment variable alone is not available to the local command.
 
 An unset `MONGODB_URI` produces a clear API configuration error. Setup does not seed automatically. The app does not write contact data or images to its local filesystem during normal use.
 
@@ -31,6 +34,8 @@ An unset `MONGODB_URI` produces a clear API configuration error. Setup does not 
 - `app/api/[...path]/`: contact, auth, taxonomy, CSV, image and suggestion endpoints.
 - `lib/store.js`: MongoDB Atlas collections and transactional updates.
 - `lib/images.js`: GridFS profile picture storage.
+- `lib/fmc-network.js`: FMC network reads from its own Atlas collection.
+- `seed/fmcNetworkData.js`: source snapshot for the one-time FMC import.
 - `data/`: ignored local backup from the previous file-backed version; not used at runtime.
 
 Admin login issues a 24-hour signed token. The hotel code creates an eight-hour HTTP-only access cookie. The admin credential, database URI and signing secret remain server-only in `.env.local`. For deployment, set the same environment variables on the server and keep the old local backup until migration is verified.
