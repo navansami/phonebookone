@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "FTP Telephone Book",
+  "short_name": "Phonebook",
+  "description": "Fairmont The Palm employee phone directory",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#151515",
+  "theme_color": "#151515",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

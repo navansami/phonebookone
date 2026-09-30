@@ -1,0 +1,46 @@
+{
+  "contacts": [
+    {
+      "id": "0002",
+      "name": "Test, CSV",
+      "extension": null,
+      "company": null,
+      "department": "Engineering",
+      "designation": null,
+      "mobile": null,
+      "landline": null,
+      "email": null,
+      "website": null,
+      "languages": [
+        "French"
+      ],
+      "comments": null,
+      "tags": [
+        "ERT",
+        "Staff"
+      ],
+      "expose": true,
+      "is_ert": false,
+      "is_ifa": false,
+      "is_third_party": false,
+      "profile_picture": "/api/images/0002-1790743378864.png",
+      "created_at": "2026-09-30T04:42:58.851Z",
+      "updated_at": "2026-09-30T04:42:58.866Z"
+    }
+  ],
+  "taxonomies": {
+    "departments": [
+      "Front Office",
+      "Rooms"
+    ]
+  },
+  "suggestions": [
+    {
+      "type": "edit",
+      "name": "Test, CSV",
+      "id": "c7db6acf-08eb-42aa-a94b-d702fd1ee99a",
+      "created_at": "2026-09-30T04:42:58.876Z"
+    }
+  ],
+  "nextId": 3
+}
