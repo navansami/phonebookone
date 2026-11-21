@@ -506,6 +506,11 @@ const AdminDashboard = () => {
   };
 
   const handleEditContact = (contact) => {
+    if (!contact.id) {
+      queryClient.invalidateQueries({ queryKey: ['admin-contacts'] });
+      toast.error('This contact is missing its ID. Refresh the directory and reopen the contact.');
+      return;
+    }
     setSelectedContact(contact);
     setIsFormModalOpen(true);
   };
