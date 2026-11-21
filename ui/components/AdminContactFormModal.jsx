@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, User, Upload, ImageIcon, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ImageCropModal from './ImageCropModal';
@@ -39,78 +39,45 @@ const FloatingInput = ({
   </div>
 );
 
+function formValues(contact = {}) {
+  return {
+    name: contact.name || '',
+    designation: contact.designation || '',
+    department: contact.department || '',
+    company: contact.company || '',
+    extension: contact.extension || '',
+    email: contact.email || '',
+    mobile: contact.mobile || '',
+    landline: contact.landline || '',
+    website: contact.website || '',
+    languages: (contact.languages || []).join(', '),
+    tags: (contact.tags || []).join(', '),
+    comments: contact.comments || '',
+    expose: contact.expose ?? true,
+    is_ert: contact.is_ert || false,
+    is_ifa: contact.is_ifa || false,
+    is_third_party: contact.is_third_party || false,
+    profile_picture: contact.profile_picture || ''
+  };
+}
+
 const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    designation: '',
-    department: '',
-    company: '',
-    extension: '',
-    email: '',
-    mobile: '',
-    landline: '',
-    website: '',
-    languages: '',
-    tags: '',
-    comments: '',
-    expose: true,
-    is_ert: false,
-    is_ifa: false,
-    is_third_party: false,
-    profile_picture: ''
-  });
+  const initialValues = useMemo(() => formValues(contact ?? {}), [contact]);
+  const [formData, setFormData] = useState(initialValues);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const isBusy = isLoading || isUploading;
   const [errors, setErrors] = useState({});
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
 
   useEffect(() => {
-    if (contact) {
-      setFormData({
-        name: contact.name || '',
-        designation: contact.designation || '',
-        department: contact.department || '',
-        company: contact.company || '',
-        extension: contact.extension || '',
-        email: contact.email || '',
-        mobile: contact.mobile || '',
-        landline: contact.landline || '',
-        website: contact.website || '',
-        languages: contact.languages ? contact.languages.join(', ') : '',
-        tags: contact.tags ? contact.tags.join(', ') : '',
-        comments: contact.comments || '',
-        expose: contact.expose !== undefined ? contact.expose : true,
-        is_ert: contact.is_ert || false,
-        is_ifa: contact.is_ifa || false,
-        is_third_party: contact.is_third_party || false,
-        profile_picture: contact.profile_picture || ''
-      });
-    } else {
-      setFormData({
-        name: '',
-        designation: '',
-        department: '',
-        company: '',
-        extension: '',
-        email: '',
-        mobile: '',
-        landline: '',
-        website: '',
-        languages: '',
-        tags: '',
-        comments: '',
-        expose: true,
-        is_ert: false,
-        is_ifa: false,
-        is_third_party: false,
-        profile_picture: ''
-      });
-    }
+    setFormData(initialValues);
     setErrors({});
-  }, [contact, isOpen]);
+  }, [initialValues, isOpen]);
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && !isLoading) onClose();
+      if (e.key === 'Escape' && !isBusy) onClose();
     };
 
     if (isOpen) {
@@ -122,32 +89,36 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose, isLoading]);
+  }, [isOpen, onClose, isBusy]);
 
   if (!isOpen) return null;
 
   const handleBackdropClick = (e) => {
-    if (e.target === e.currentTarget && !isLoading) {
+    if (e.target === e.currentTarget && !isBusy) {
       onClose();
     }
   };
 
-  const validateForm = () => {
+  const validateForm = (changes, form) => {
     const newErrors = {};
 
-    if (!formData.name.trim()) {
+    if ('name' in changes && !changes.name.trim()) {
       newErrors.name = 'Name is required';
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (changes.email && (form.elements.email.validity.typeMismatch || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changes.email))) {
       newErrors.email = 'Invalid email format';
     }
 
-    if (formData.mobile && !/^[\d\s\-+()]+$/.test(formData.mobile)) {
+    if (changes.website && form.elements.website.validity.typeMismatch) {
+      newErrors.website = 'Invalid website URL';
+    }
+
+    if (changes.mobile && !/^[\d\s\-+()]+$/.test(changes.mobile)) {
       newErrors.mobile = 'Invalid mobile number format';
     }
 
-    if (formData.landline && !/^[\d\s\-+()]+$/.test(formData.landline)) {
+    if (changes.landline && !/^[\d\s\-+()]+$/.test(changes.landline)) {
       newErrors.landline = 'Invalid landline number format';
     }
 
@@ -167,15 +138,13 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
   };
 
   const handleCropComplete = async (croppedImageBlob) => {
+    setIsUploading(true);
     // Show loading toast
     const loadingToast = toast.loading('Uploading profile picture...');
 
     try {
-      // Generate a temporary contact ID if creating a new contact
-      const contactId = contact?.id || `temp_${Date.now()}`;
-
-      // Upload to the local server
-      const response = await uploadProfilePicture(contactId, croppedImageBlob);
+      // Stage the photo until the admin saves the form.
+      const response = await uploadProfilePicture(`temp_${Date.now()}`, croppedImageBlob);
 
       // Set the returned local URL in form data
       setFormData(prev => ({ ...prev, profile_picture: response.data.url }));
@@ -187,6 +156,8 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
         error.response?.data?.detail || 'Failed to upload profile picture',
         { id: loadingToast }
       );
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -197,8 +168,16 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isBusy) return;
 
-    if (!validateForm()) {
+    const changes = Object.fromEntries(Object.entries(formData).filter(
+      ([field, value]) => !contact || value !== initialValues[field]
+    ));
+    if (!Object.keys(changes).length) {
+      onClose();
+      return;
+    }
+    if (!validateForm(changes, e.currentTarget)) {
       toast.error('Please fix the errors in the form');
       return;
     }
@@ -206,20 +185,16 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
     setIsLoading(true);
 
     try {
-      const submitData = {
-        ...formData,
-        languages: formData.languages
-          ? formData.languages.split(',').map(lang => lang.trim()).filter(Boolean)
-          : [],
-        tags: formData.tags
-          ? formData.tags.split(',').map(tag => tag.trim()).filter(Boolean)
-          : []
-      };
-
-      await onSubmit(submitData);
+      for (const field of ['languages', 'tags']) {
+        if (field in changes) changes[field] = changes[field].split(',').map(value => value.trim()).filter(Boolean);
+      }
+      await onSubmit(changes);
     } catch (error) {
       console.error('Form submission error:', error);
-      toast.error(error.message || 'Failed to save contact');
+      const timedOut = ['ETIMEDOUT', 'ECONNABORTED'].includes(error.code);
+      toast.error(error.response?.data?.detail || (timedOut
+        ? 'Save confirmation timed out. Check the contact before retrying.'
+        : error.message || 'Failed to save contact'));
     } finally {
       setIsLoading(false);
     }
@@ -245,7 +220,7 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
               </div>
             <button
               onClick={onClose}
-              disabled={isLoading}
+              disabled={isBusy}
               className="p-2 rounded-full hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Close"
             >
@@ -255,7 +230,7 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <form noValidate onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
             <div className="px-6 py-6 space-y-6">
               {/* Profile Picture Section */}
               <div className="rounded-3xl border border-indigo-100 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.14),_transparent_32%),linear-gradient(135deg,#f8f8ff,#f3f6ff)] p-5 dark:border-[#2f4054] dark:bg-[radial-gradient(circle_at_top_left,_rgba(91,79,231,0.16),_transparent_30%),linear-gradient(135deg,#151e29,#17212d)]">
@@ -271,6 +246,7 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
                         <button
                           type="button"
                           onClick={handleRemoveProfilePicture}
+                          disabled={isBusy}
                           className="absolute -top-2 -right-2 rounded-full bg-red-500 p-1.5 text-white shadow-lg transition-colors hover:bg-red-600"
                           title="Remove picture"
                         >
@@ -298,6 +274,7 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
                       <button
                         type="button"
                         onClick={() => setIsCropModalOpen(true)}
+                        disabled={isBusy}
                         className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 font-medium text-indigo-700 shadow-sm ring-1 ring-indigo-200 transition-colors hover:bg-indigo-50 dark:bg-[#1b2734] dark:text-[#8edfff] dark:ring-[#35526b] dark:hover:bg-[#223142]"
                       >
                         {formData.profile_picture ? (
@@ -316,6 +293,7 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
                         <button
                           type="button"
                           onClick={handleRemoveProfilePicture}
+                          disabled={isBusy}
                           className="inline-flex items-center gap-2 rounded-xl bg-white/80 px-4 py-2.5 font-medium text-red-600 shadow-sm ring-1 ring-red-200 transition-colors hover:bg-red-50 dark:bg-[#1b2734] dark:text-red-300 dark:ring-red-900/40 dark:hover:bg-red-900/20"
                         >
                           <XCircle className="w-4 h-4" />
@@ -380,7 +358,7 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
                 </div>
 
                 <div>
-                  <FloatingInput label="Website" name="website" type="url" value={formData.website} onChange={handleChange} placeholder="https://example.com" disabled={isLoading} />
+                  <FloatingInput label="Website" name="website" type="url" value={formData.website} onChange={handleChange} placeholder="https://example.com" error={errors.website} disabled={isLoading} />
                 </div>
               </div>
               </div>
@@ -488,14 +466,14 @@ const AdminContactFormModal = ({ isOpen, onClose, contact, onSubmit }) => {
               <button
                 type="button"
                 onClick={onClose}
-                disabled={isLoading}
+                disabled={isBusy}
                 className="w-full sm:w-auto rounded-xl border border-gray-300 px-6 py-3 font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#34485e] dark:text-gray-200 dark:hover:bg-[#1f2b38]"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isBusy}
                 className="w-full sm:flex-1 rounded-xl bg-gradient-to-r from-[#3f6ee8] via-[#5b4fe7] to-[#8c3ae8] px-6 py-3 text-white transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center gap-2 font-semibold shadow-lg shadow-indigo-900/20"
               >
                 {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}

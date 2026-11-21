@@ -136,21 +136,20 @@ const AdminDashboard = () => {
       setIsFormModalOpen(false);
       setSelectedContact(null);
     },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || 'Failed to create contact');
-    },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => contactsApi.updateContact(id, data),
+    networkMode: 'always',
+    mutationFn: ({ id, data }) => contactsApi.updateContactAdmin(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-taxonomy'] });
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ['languages'] });
       toast.success('Contact updated successfully');
       setIsFormModalOpen(false);
       setSelectedContact(null);
-    },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || 'Failed to update contact');
     },
   });
 

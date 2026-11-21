@@ -53,7 +53,7 @@ export const updateContact = (id, data) => {
  * @returns {Promise} Axios response promise
  */
 export const updateContactAdmin = (id, data) => {
-  return api.put(`/api/admin/contacts/${id}`, data);
+  return api.put(`/api/admin/contacts/${encodeURIComponent(id)}`, data, { timeout: 20000 });
 };
 
 /**
@@ -156,6 +156,7 @@ export const uploadProfilePicture = (contactId, file) => {
   formData.append('file', file);
 
   return api.post(`/api/upload/profile-picture?contact_id=${contactId}`, formData, {
+    timeout: 30000,
     headers: {
       'Content-Type': 'multipart/form-data',
     },

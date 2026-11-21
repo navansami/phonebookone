@@ -48,6 +48,18 @@ test('admin auth and hotel access gate', async () => {
   assert.equal(listing.pagination.total, 1);
   assert.equal(listing.contacts[0].id, id);
   assert.equal((await call('PUT', `/api/contacts/${id}`, { designation: 'Manager' }, publicHeaders)).status, 200);
+  const editRoute = `/api/admin/contacts/${id}`;
+  assert.equal((await call('PUT', editRoute, { extension: '1234' }, publicHeaders)).status, 401);
+  const browserHeaders = { ...adminHeaders, Host: 'directory.example', 'X-Forwarded-Proto': 'https' };
+  const rejected = await call('PUT', editRoute, { extension: '1234' }, { ...browserHeaders, Origin: 'https://other.example' });
+  assert.equal(rejected.status, 403);
+  const edit = await call('PUT', editRoute, { extension: '1234' }, { ...browserHeaders, Origin: 'https://directory.example' });
+  assert.equal(edit.status, 200);
+  const saved = await edit.json();
+  assert.equal(saved.extension, '1234');
+  assert.equal(saved.designation, 'Manager');
+  assert.deepEqual(await (await call('GET', `/api/contacts/${id}`, undefined, adminHeaders)).json(), saved);
+  assert.equal((await call('PUT', '/api/admin/contacts/missing', { extension: '1234' }, adminHeaders)).status, 404);
   assert.equal((await call('PATCH', `/api/admin/contacts/${id}/ert?is_ert=true`, undefined, adminHeaders)).status, 200);
   const afterFlag = await (await call('GET', `/api/contacts/${id}`, undefined, publicHeaders)).json();
   assert.equal(afterFlag.is_ert, true);

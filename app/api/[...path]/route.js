@@ -1,4 +1,4 @@
-import { readStore, updateStore } from '../../../lib/store.js';
+import { readStore, updateStore, updateContactById } from '../../../lib/store.js';
 import { saveImage, readImage } from '../../../lib/images.js';
 import { getFmcProviders } from '../../../lib/fmc-network.js';
 import { adminFromRequest, checkCredentials, checkHotelCode, createToken } from '../../../lib/auth.js';
@@ -66,12 +66,7 @@ async function handleContacts(request, segments, method, url) {
   }
   if (id && method === 'PUT') {
     const data = validateContact(await body(request), true);
-    const contact = await updateStore(store => {
-      const existing = mutableContact(store, id);
-      if (!existing) return null;
-      Object.assign(existing, data, { updated_at: new Date().toISOString() });
-      return existing;
-    });
+    const contact = await updateContactById(id, data);
     return contact ? json(contact) : error('Contact not found', 404);
   }
   return error('Not found', 404);
@@ -182,7 +177,8 @@ async function handleAdminContacts(request, segments, method, url) {
 
 async function handleUpload(request, url) {
   const id = url.searchParams.get('contact_id');
-  if (!id || !(mutableContact(await readStore(), id) || /^temp_\d{10,16}$/.test(id))) return error('Contact not found', 404);
+  const staged = /^temp_\d{10,16}$/.test(id);
+  if (!id || (!staged && !mutableContact(await readStore(), id))) return error('Contact not found', 404);
   const form = await request.formData();
   const file = form.get('file');
   if (!file || typeof file.type !== 'string' || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return error('Invalid file type. Only PNG, JPEG or WebP images are allowed');
@@ -191,7 +187,7 @@ async function handleUpload(request, url) {
   const filename = `${id}-${crypto.randomUUID()}.${extension}`;
   await saveImage(filename, Buffer.from(await file.arrayBuffer()), file.type);
   const imageUrl = `/api/images/${filename}`;
-  await updateStore(store => { const contact = mutableContact(store, id); if (contact) { contact.profile_picture = imageUrl; contact.updated_at = new Date().toISOString(); } });
+  if (!staged) await updateContactById(id, { profile_picture: imageUrl });
   return json({ url: imageUrl, message: 'Profile picture uploaded successfully' });
 }
 
@@ -202,7 +198,10 @@ async function dispatch(request, params) {
   try {
     if (!['GET', 'HEAD'].includes(method)) {
       const origin = request.headers.get('origin');
-      if (origin && origin !== url.origin) return error('Cross-origin requests are not allowed', 403);
+      // Next.js can construct request.url with an internal server hostname.
+      const host = request.headers.get('host') || url.host;
+      const protocol = request.headers.get('x-forwarded-proto') === 'https' ? 'https:' : url.protocol;
+      if (origin && origin !== `${protocol}//${host}`) return error('Cross-origin requests are not allowed', 403);
     }
     if (segments[0] === 'auth') return await handleAuth(request, segments, method);
     if (segments[0] === 'access' && segments[1] === 'me' && method === 'GET') return (await accessFromRequest(request)) ? json({ verified: true }) : error('Hotel access required', 401);
